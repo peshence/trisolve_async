@@ -1,4 +1,4 @@
-use ndarray::{Array2, Array1, ArrayBase,s, Data, prelude::*, DataMut};
+use ndarray::{Array2, Array1, ArrayBase,s, Data, prelude::*, DataMut, ViewRepr, OwnedRepr};
 // use futures::prelude::*;
 // use tokio::prelude::*;
 // use tokio::task;
@@ -34,32 +34,31 @@ fn solve_above<S1,S2>(L: &ArrayBase<S1, Ix2>, b: &mut ArrayBase<S2, Ix1>,
 // TODO: handle n not divisible by m
 fn blocked_triangular_solve(L: &Array2<f64>, b: &mut Array1<f64>, m:i32) -> () {
     let n = L.dim().0 as i32;
-    let mut lower_row_bound = n;//n-i*m;
-    let mut upper_row_bound = n-m;//n-(i+1)*m;
-    let mut right_col_bound = n;//n-j*m;
-    let mut left_col_bound = n-m;//n-(j+1)*m;
+    let mut left_col_bound = n-m;//n-i*m;
+    let mut right_col_bound = n;//n-(i+1)*m;
     for i in 0..(n/m) { // row cells
+        let mut top_row_bound = left_col_bound;//n-(j+1)*m;
+        let mut bottom_row_bound = right_col_bound;//n-j*m;
         for j in i..(n/m) { // col cells
-            println!("{} {} {} {}",lower_row_bound,upper_row_bound,left_col_bound,right_col_bound);
             if i==j{
-                simple_triangular_solve(&L.slice(s![lower_row_bound..upper_row_bound,
+                simple_triangular_solve(&L.slice(s![top_row_bound..bottom_row_bound,
                                                     left_col_bound..right_col_bound]), 
-                                        &mut b.slice_mut(s![lower_row_bound..upper_row_bound]));
+                                        &mut b.slice_mut(s![top_row_bound..bottom_row_bound]));
             }
             else {
                 let solution = b.clone();
-                solve_above(&L.slice(s![lower_row_bound..upper_row_bound,
+                // let mut a = b.slice_mut(s![lower_row_bound..upper_row_bound]);
+                solve_above(&L.slice(s![top_row_bound..bottom_row_bound,
                                         left_col_bound..right_col_bound]), 
-                            &mut b.slice_mut(s![lower_row_bound..upper_row_bound]),
+                            &mut b.slice_mut(s![top_row_bound..bottom_row_bound]),
                             solution.slice(s![left_col_bound..right_col_bound]));
             }
-            right_col_bound -= m;
-            left_col_bound -= m;
+            top_row_bound -= m;
+            bottom_row_bound -= m;
         }
-        lower_row_bound -= m;
-        upper_row_bound -= m;
+        left_col_bound -= m;
+        right_col_bound -= m;
     }
-    println!("{b}")
 }
 
 
@@ -103,6 +102,15 @@ mod tests {
         [6.,3.,1.],
         [4.,10.,7.]]),arr1(&[8.,5.,14.]),arr1(&[2.,1.,2.]),arr1(&[0.,-12.,-18.]) ; "it solves")]
     fn test_solve_above(L:Array2<f64>, mut b:Array1<f64>, solved: Array1<f64>, solution:Array1<f64>) -> ()
+    {
+        solve_above(&L, &mut b, solved);
+        assert_eq!(b,solution);
+    }    
+    #[test_case(arr2(&[
+        [1.,2.,2.],
+        [6.,3.,1.],
+        [4.,10.,7.]]),arr1(&[8.,5.,14.]),arr1(&[2.,1.,2.]),arr1(&[0.,-12.,-18.]) ; "it solves")]
+    fn test_solve_above_slice(L:Array2<f64>, mut b:Array1<f64>, solved: Array1<f64>, solution:Array1<f64>) -> ()
     {
         solve_above(&L, &mut b, solved);
         assert_eq!(b,solution);
