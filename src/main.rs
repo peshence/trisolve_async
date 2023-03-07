@@ -1,4 +1,8 @@
+// mod async_test;
+
 use ndarray::{Array2, Array1, ArrayBase,s, Data, prelude::*, DataMut, ViewRepr, OwnedRepr};
+// use async_mutex::Mutex;
+use async_dag::Graph;
 // use futures::prelude::*;
 // use tokio::prelude::*;
 // use tokio::task;
@@ -11,23 +15,25 @@ fn main() {
 /// assume L is upper triangular square matrix
 fn simple_triangular_solve<S1,S2>(L: &ArrayBase<S1, Ix2>, b: &mut ArrayBase<S2, Ix1>) -> ()
         where S1: Data<Elem=f64>, S2 : DataMut<Elem=f64> {
-    for i in (0..L.dim().0).rev() {
-        b[i] = b[i]/L[[i,i]];
-        for j in (0..i).rev() {
-            b[j] -= L[[j,i]]*b[i]
+    for col in (0..L.dim().0).rev() {
+        b[col] = b[col]/L[[col,col]];
+        for row in (0..col).rev() {
+            b[row] -= L[[row,col]]*b[col]
         }
     }
 }
 
 /// in a blocked upper triangular solver this handles the blocks above a diagonal block (which has been solved)
-fn solve_above<S1,S2>(L: &ArrayBase<S1, Ix2>, b: &mut ArrayBase<S2, Ix1>, 
-                        solved: ArrayBase<S1, Ix1>)  -> () 
-        where S1: Data<Elem=f64>, S2 : DataMut<Elem=f64> {
-    for i in (0..L.dim().0).rev() {        
-        for j in (0..L.dim().0).rev() {
-            b[j] -= L[[j,i]]*solved[i]
+/// this needs the whole b vector and needs it to be mutex. Alternatively
+fn solve_above<S1>(L: &ArrayBase<S1, Ix2>, solved: &ArrayBase<S1, Ix1>)  -> Array1<f64> 
+        where S1: Data<Elem=f64> {
+    let mut b = Array::<f64,Ix1>::zeros(L.raw_dim()[0]);
+    for col in (0..L.dim().0).rev() {        
+        for row in (0..L.dim().0).rev() {
+            b[row] -= L[[row,col]]*solved[col];
         }
     }
+    b
 }
 
 /// Solve upper triangular matrix equation Lx = b by splitting L(nxn) into blocks of size mxm
@@ -46,12 +52,12 @@ fn blocked_triangular_solve(L: &Array2<f64>, b: &mut Array1<f64>, m:i32) -> () {
                                         &mut b.slice_mut(s![top_row_bound..bottom_row_bound]));
             }
             else {
-                let solution = b.clone();
                 // let mut a = b.slice_mut(s![lower_row_bound..upper_row_bound]);
-                solve_above(&L.slice(s![top_row_bound..bottom_row_bound,
-                                        left_col_bound..right_col_bound]), 
-                            &mut b.slice_mut(s![top_row_bound..bottom_row_bound]),
-                            solution.slice(s![left_col_bound..right_col_bound]));
+                let temp = b.slice(s![top_row_bound..bottom_row_bound]);
+                let sub_vec = solve_above(&L.slice(s![top_row_bound..bottom_row_bound,left_col_bound..right_col_bound]),
+                                &b.slice(s![left_col_bound..right_col_bound]));
+                let bminsub = temp + sub_vec;
+                b.slice_mut(s![top_row_bound..bottom_row_bound]).assign(&sub_vec);
             }
             top_row_bound -= m;
             bottom_row_bound -= m;
@@ -103,16 +109,16 @@ mod tests {
         [4.,10.,7.]]),arr1(&[8.,5.,14.]),arr1(&[2.,1.,2.]),arr1(&[0.,-12.,-18.]) ; "it solves")]
     fn test_solve_above(L:Array2<f64>, mut b:Array1<f64>, solved: Array1<f64>, solution:Array1<f64>) -> ()
     {
-        solve_above(&L, &mut b, solved);
-        assert_eq!(b,solution);
+        let test_solution = solve_above(&L, &solved);
+        assert_eq!(b+test_solution,solution);
     }    
-    #[test_case(arr2(&[
-        [1.,2.,2.],
-        [6.,3.,1.],
-        [4.,10.,7.]]),arr1(&[8.,5.,14.]),arr1(&[2.,1.,2.]),arr1(&[0.,-12.,-18.]) ; "it solves")]
-    fn test_solve_above_slice(L:Array2<f64>, mut b:Array1<f64>, solved: Array1<f64>, solution:Array1<f64>) -> ()
-    {
-        solve_above(&L, &mut b, solved);
-        assert_eq!(b,solution);
-    }
+    // #[test_case(arr2(&[
+    //     [1.,2.,2.],
+    //     [6.,3.,1.],
+    //     [4.,10.,7.]]),arr1(&[8.,5.,14.]),arr1(&[2.,1.,2.]),arr1(&[0.,-12.,-18.]) ; "it solves")]
+    // fn test_solve_above_slice(L:Array2<f64>, mut b:Array1<f64>, solved: Array1<f64>, solution:Array1<f64>) -> ()
+    // {
+    //     solve_above(&L, &mut b, solved);
+    //     assert_eq!(b,solution);
+    // }
 }
