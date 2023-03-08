@@ -1,8 +1,8 @@
 // mod async_test;
 
-use ndarray::{Array2, Array1, ArrayBase,s, Data, prelude::*, DataMut, ViewRepr, OwnedRepr};
+use ndarray::{Array2, Array1, ArrayBase,s, Data, prelude::*, DataMut};
 // use async_mutex::Mutex;
-use async_dag::Graph;
+// use async_dag::Graph;
 // use futures::prelude::*;
 // use tokio::prelude::*;
 // use tokio::task;
@@ -56,8 +56,8 @@ fn blocked_triangular_solve(L: &Array2<f64>, b: &mut Array1<f64>, m:i32) -> () {
                 let temp = b.slice(s![top_row_bound..bottom_row_bound]);
                 let sub_vec = solve_above(&L.slice(s![top_row_bound..bottom_row_bound,left_col_bound..right_col_bound]),
                                 &b.slice(s![left_col_bound..right_col_bound]));
-                let bminsub = temp + sub_vec;
-                b.slice_mut(s![top_row_bound..bottom_row_bound]).assign(&sub_vec);
+                let bminsub = &temp + &sub_vec;
+                b.slice_mut(s![top_row_bound..bottom_row_bound]).assign(&bminsub);
             }
             top_row_bound -= m;
             bottom_row_bound -= m;
